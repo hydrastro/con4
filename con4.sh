@@ -1,6 +1,6 @@
 #!/bin/bash
 
-: "${HOST:=localhost}"
+: "${HOST:=10.147.19.196}"
 : "${PORT:=9411}"
 
 RED_COLOR=$(tput setaf 1)
@@ -30,6 +30,7 @@ SERVER_MACHINE="SERVER"
 CURRENT_MACHINE=""
 RECONNECT_COMMAND="RECONNECT"
 HELLO_COMMAND="YO"
+REPLY_COMMAND="SUP"
 RED="RED"
 YELLOW="YELLOW"
 EMPTY="EMPTY"
@@ -298,7 +299,13 @@ function con4_get_opponent_move() {
             # TODO
             exit 1
         fi
+    else
+        # TODO: main menu
+        # Server offline!
+        echo "Error: no server found!"
+        exit 1
     fi
+    echo "huh?"
     con4_insert_move "$move" "$CURRENT_TURN"
     con4_swap_current_turn
     while read -r -t 0; do read -r; done
@@ -342,6 +349,7 @@ function con4_reset_game() {
     done
 }
 
+# TODO
 function con4_ask_continue() {
     local  prompt
     prompt="Play again [Y/n?] "
@@ -380,12 +388,25 @@ function con4_game_loop() {
     done
 }
 
+# TODO
 function con4_wait_authentication() {
-    STATUS="$STATUS_WAITING_OPPONENT"
     echo "Waiting for an opponent."
     while : ; do
         read -r hello_message < "$FIFO_OUT"
         if [[ "$hello_message" != "$HELLO_COMMAND" ]]; then
+            echo "Opponent authentication error."
+        else
+            con4_send_reply_command
+            break
+        fi
+    done
+}
+
+function con4_wait_reply_message() {
+    echo "Waiting for an opponent."
+    while : ; do
+        read -r hello_message < "$FIFO_OUT"
+        if [[ "$hello_message" != "$REPLY_COMMAND" ]]; then
             echo "Opponent authentication error."
         else
             break
@@ -393,8 +414,13 @@ function con4_wait_authentication() {
     done
 }
 
+function con4_send_reply_command() {
+    echo "$REPLY_COMMAND" > "$FIFO_IN"
+}
+
 function con4_create_game() {
     CURRENT_MACHINE="$SERVER_MACHINE"
+    STATUS="$STATUS_WAITING_OPPONENT"
     con4_init_game
     tail -f "$FIFO_IN" | netcat -l "$HOST" "$PORT" | tee "$FIFO_OUT" >         \
     /dev/null &
@@ -404,9 +430,11 @@ function con4_create_game() {
 
 function con4_join_game() {
     CURRENT_MACHINE="$CLIENT_MACHINE"
+    STATUS="$STATUS_WAITING_OPPONENT"
     con4_init_game
     tail -f "$FIFO_IN" | netcat "$HOST" "$PORT" | tee "$FIFO_OUT" > /dev/null &
     con4_send_hello_message
+    con4_wait_reply_message
     con4_swap_current_turn
     con4_game_loop
 }
@@ -473,8 +501,8 @@ EOF
 
 function con4_quit() {
     rm -rf "$FIFO_IN" "$FIFO_OUT"
-    echo $'\n'
     pkill -P $$
+    printf "\\r"
     exit
 }
 
@@ -484,8 +512,8 @@ function con4_main() {
     con4_display_status
     while [[ -z "${action}" ]] ; do
         read -r -n 1 -p "> " action
-        printf "\\n"
     done
+    printf "\\n"
     case "$action" in
         "c")
             con4_create_game
